@@ -3,12 +3,33 @@
 # Code written by : Siddharth Agrawal
 # Email ID : siddharth.950@gmail.com
 
+import matplotlib as mpl
+mpl.use('Agg')
+
 import numpy
 import math
 import time
 import scipy.io
 import scipy.optimize
 import matplotlib.pyplot
+import numpy as np
+
+def extract_data(filename, num_images, IMAGE_SIZE=28):
+	with open(filename) as bytestream:
+		bytestream.read(16)
+		buf = bytestream.read(IMAGE_SIZE * IMAGE_SIZE * num_images)
+		data = np.frombuffer(buf, dtype=np.uint8).astype(np.float32)
+		data = data.reshape(num_images, IMAGE_SIZE, IMAGE_SIZE, 1)
+	return data
+
+
+def extract_labels(filename, num_images):
+	with open(filename) as bytestream:
+		bytestream.read(8)
+		buf = bytestream.read(1 * num_images)
+		labels = np.frombuffer(buf, dtype=np.uint8).astype(np.int64)
+	return labels
+
 
 ###########################################################################################
 """ The Sparse Autoencoder Linear class """
@@ -94,6 +115,24 @@ class SparseAutoencoderLinear(object):
                                                    numpy.sum(numpy.multiply(W2, W2)))
         KL_divergence        = self.beta * numpy.sum(self.rho * numpy.log(self.rho / rho_cap) +
                                                     (1 - self.rho) * numpy.log((1 - self.rho) / (1 - rho_cap)))
+
+	def L1_grad(X):
+		return 1
+
+	def L2_grad(X):
+		return 2 *X
+
+	def Lelastic_grad(X):
+		return 0.5 * L1_grad(X)  + 0.5 * L2_grad(X)
+
+	def Ltrace_grad(X):
+		U, s, V = numpy.linalg.svd(X)
+		return U * V
+
+	L1_error             = numpy.linalg.norm(W1, 1) + numpy.linalg.norm(W2, 1)
+	L2_error             = numpy.linalg.norm(W1, 2) + numpy.linalg.norm(W2, 2)
+	Lelastic_error       = 0.5 * L1_error + 0.5 * L2_error
+	#Ltrace_error         = numpy.sum(numpy.linalg.eig(numpy.linalg.svd(W1))[0]) + numpy.sum(numpy.linalg.eig(numpy.linalg.svd(W2))[1])
         cost                 = sum_of_squares_error + weight_decay + KL_divergence
         
         KL_div_grad = self.beta * (-(self.rho / rho_cap) + ((1 - self.rho) / (1 - rho_cap)))
@@ -159,11 +198,13 @@ def loadDataset():
 
     """ Loads the dataset as a numpy array
         The dataset is originally read as a dictionary """
-
-    images = scipy.io.loadmat('stlSampledPatches.mat')
-    images = numpy.array(images['patches'])
-    
-    return images
+    X_test = extract_data("notMNIST-to-MNIST/data/t10k-images-idx3-ubyte", 1000 * 10)
+    X_test = np.swapaxes(X_test.reshape((1000 * 10, 28 * 28 * 1)),0,1) / 255.0
+    X_train = extract_data("notMNIST-to-MNIST/data/train-images-idx3-ubyte", 6000 * 10)
+    X_train = np.swapaxes(X_train.reshape((6000 * 10, 28 * 28 * 1)),0,1) / 255.0
+    Y_test =  extract_labels("notMNIST-to-MNIST/data/t10k-labels-idx1-ubyte", 1000 * 10)
+    Y_train =  extract_labels("notMNIST-to-MNIST/data/train-labels-idx1-ubyte", 1000 * 10)
+    return (X_train, Y_train), (X_test, Y_test)
     
 ###########################################################################################
 """ Visualizes the obtained optimal W1 values as images """
@@ -209,6 +250,7 @@ def visualizeW1(opt_W1, vis_patch_side, hid_patch_side):
     """ Show the obtained plot """  
         
     matplotlib.pyplot.show()
+    savefig('weights1.png')
 
 ###########################################################################################
 """ Loads data, trains the Autoencoder and visualizes the learned weights """
@@ -217,14 +259,14 @@ def executeSparseAutoencoderLinear():
 
     """ Define the parameters of the Autoencoder """
     
-    image_channels  = 3      # number of channels in the image patches
-    vis_patch_side  = 8      # side length of sampled image patches
+    image_channels  = 1      # number of channels in the image patches
+    vis_patch_side  = 28     # side length of sampled image patches
     hid_patch_side  = 20     # side length of representative image patches
-    num_patches     = 100000 # number of training examples
+    num_patches     = 10000  # number of training examples
     rho             = 0.035  # desired average activation of hidden units
     lamda           = 0.003  # weight decay parameter
     beta            = 5      # weight of sparsity penalty term
-    max_iterations  = 400    # number of optimization iterations
+    max_iterations  = 10    # number of optimization iterations
     epsilon         = 0.1    # regularization constant for ZCA Whitening
     
     visible_size = vis_patch_side * vis_patch_side * image_channels # number of input units
@@ -232,8 +274,7 @@ def executeSparseAutoencoderLinear():
     
     """ Load the dataset and preprocess using ZCA Whitening """
     
-    training_data = loadDataset()
-    training_data, zca_white, mean_patch = preprocessDataset(training_data, num_patches, epsilon)
+    (xtr, ytr), (xte, yte) = loadDataset()
     
     """ Initialize the Autoencoder with the above parameters """
     
@@ -242,13 +283,14 @@ def executeSparseAutoencoderLinear():
     """ Run the L-BFGS algorithm to get the optimal parameter values """
     
     opt_solution  = scipy.optimize.minimize(encoder.sparseAutoencoderLinearCost, encoder.theta, 
-                                            args = (training_data,), method = 'L-BFGS-B', 
+                                            args = (xtr,), method = 'L-BFGS-B', 
                                             jac = True, options = {'maxiter': max_iterations})
     opt_theta     = opt_solution.x
     opt_W1        = opt_theta[encoder.limit0 : encoder.limit1].reshape(hidden_size, visible_size)
+    print opt_theta
     
     """ Visualize the obtained optimal W1 weights """
     
-    visualizeW1(numpy.dot(opt_W1, zca_white), vis_patch_side, hid_patch_side)
+    #visualizeW1(numpy.dot(opt_W1, zca_white), vis_patch_side, hid_patch_side)
 
 executeSparseAutoencoderLinear()
