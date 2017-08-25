@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('Agg')
+
 import theano
 import numpy as np
 import cPickle as pickle
@@ -36,6 +39,7 @@ def main():
     plt.imshow(manifold, cmap='Greys_r')
     plt.axis('off')
     plt.show()
+    plt.savefig("visualize.png")
 
 if __name__ == '__main__':
     main()

@@ -92,7 +92,7 @@ def main():
     #print(train_y[0:10])  # seems to already be shuffled
     valid_x, valid_y = data['valid']
 
-    decs = {'mnist': 'bernoulli'}
+    decs = {'mnist': 'gaussian'}
     model = VAE(train_x.shape[1], args, dec=decs[args.dset])
 
     expcost = None

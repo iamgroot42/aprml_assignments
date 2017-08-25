@@ -3,6 +3,8 @@
 # Code written by : Siddharth Agrawal
 # Email ID : siddharth.950@gmail.com
 
+# Modified by : Anshuman Suri (iamgroot42)
+
 import matplotlib as mpl
 mpl.use('Agg')
 
@@ -13,6 +15,9 @@ import scipy.io
 import scipy.optimize
 import matplotlib.pyplot
 import numpy as np
+from sklearn import linear_model
+from sklearn.externals import joblib
+
 
 def extract_data(filename, num_images, IMAGE_SIZE=28):
 	with open(filename) as bytestream:
@@ -86,9 +91,8 @@ class SparseAutoencoderLinear(object):
 
     #######################################################################################
     """ Returns the cost of the Autoencoder and gradient at a particular 'theta' """
-        
+
     def sparseAutoencoderLinearCost(self, theta, input):
-        
         """ Extract weights and biases from 'theta' input """
         
         W1 = theta[self.limit0 : self.limit1].reshape(self.hidden_size, self.visible_size)
@@ -126,14 +130,14 @@ class SparseAutoencoderLinear(object):
 		return 0.5 * L1_grad(X)  + 0.5 * L2_grad(X)
 
 	def Ltrace_grad(X):
-		U, s, V = numpy.linalg.svd(X)
-		return U * V
+		U, s, V = numpy.linalg.svd(X, full_matrices=False)
+		return np.dot(U, V)
 
 	L1_error             = numpy.linalg.norm(W1, 1) + numpy.linalg.norm(W2, 1)
 	L2_error             = numpy.linalg.norm(W1, 2) + numpy.linalg.norm(W2, 2)
 	Lelastic_error       = 0.5 * L1_error + 0.5 * L2_error
-	#Ltrace_error         = numpy.sum(numpy.linalg.eig(numpy.linalg.svd(W1))[0]) + numpy.sum(numpy.linalg.eig(numpy.linalg.svd(W2))[1])
-        cost                 = sum_of_squares_error + weight_decay + KL_divergence
+	Ltrace_error         = numpy.sum(numpy.linalg.svd(W1)[1]) + numpy.sum(numpy.linalg.svd(W2)[1])
+        cost                 = sum_of_squares_error + weight_decay + KL_divergence + Ltrace_error
         
         KL_div_grad = self.beta * (-(self.rho / rho_cap) + ((1 - self.rho) / (1 - rho_cap)))
         
@@ -156,8 +160,8 @@ class SparseAutoencoderLinear(object):
         
         """ Transform numpy matrices into arrays """
         
-        W1_grad = numpy.array(W1_grad)
-        W2_grad = numpy.array(W2_grad)
+        W1_grad = numpy.array(W1_grad) + Ltrace_grad(W1)
+        W2_grad = numpy.array(W2_grad) + Ltrace_grad(W2)
         b1_grad = numpy.array(b1_grad)
         b2_grad = numpy.array(b2_grad)
         
@@ -168,42 +172,37 @@ class SparseAutoencoderLinear(object):
                                         
         return [cost, theta_grad]
 
-###########################################################################################
-""" Preprocesses the dataset using ZCA Whitening """
-
-def preprocessDataset(data, num_patches, epsilon):
-
-    """ Subtract mean of each patch separately """
-
-    mean_patch = numpy.mean(data, axis = 1, keepdims = True)
-    data       = data - mean_patch
-    
-    """ Compute the ZCA Whitening matrix """
-    
-    sigma           = numpy.dot(data, numpy.transpose(data)) / num_patches
-    [u, s, v]       = numpy.linalg.svd(sigma)
-    rescale_factors = numpy.diag(1 / numpy.sqrt(s + epsilon))
-    zca_white       = numpy.dot(numpy.dot(u, rescale_factors), numpy.transpose(u));
-    
-    """ Apply ZCA Whitening to the data """
-    
-    data = numpy.dot(zca_white, data)
-    
-    return data, zca_white, mean_patch
+	###########################################################################################
+	""" Train a classification model over encodings """
+	
+    def trainMLP(self, theta, X_train, y_train, X_test, y_test):
+	W1 = theta[self.limit0 : self.limit1].reshape(self.hidden_size, self.visible_size)
+	W2 = theta[self.limit1 : self.limit2].reshape(self.visible_size, self.hidden_size)
+	b1 = theta[self.limit2 : self.limit3].reshape(self.hidden_size, 1)
+	b2 = theta[self.limit3 : self.limit4].reshape(self.visible_size, 1)
+	
+	logreg = linear_model.LogisticRegression(C=1e5)
+	X_enc_train = self.sigmoid(numpy.dot(W1, X_train) + b1)
+	X_enc_test = self.sigmoid(numpy.dot(W1, X_test) + b1)
+	X_enc_train = np.swapaxes(X_enc_train, 0, 1)
+	X_enc_test = np.swapaxes(X_enc_test, 0, 1)
+	logreg.fit(X_enc_train, y_train)
+	print logreg.score(X_enc_test, y_test)
+	return logreg
 
 ###########################################################################################
-""" Loads the image patches from the mat file """
+""" Loads the dataset from ubtye files """
 
 def loadDataset():
 
     """ Loads the dataset as a numpy array
         The dataset is originally read as a dictionary """
     X_test = extract_data("notMNIST-to-MNIST/data/t10k-images-idx3-ubyte", 1000 * 10)
-    X_test = np.swapaxes(X_test.reshape((1000 * 10, 28 * 28 * 1)),0,1) / 255.0
+    X_test = np.swapaxes(X_test.reshape((1000 * 10, 28 * 28 * 1)), 0, 1) / 255.0
     X_train = extract_data("notMNIST-to-MNIST/data/train-images-idx3-ubyte", 6000 * 10)
-    X_train = np.swapaxes(X_train.reshape((6000 * 10, 28 * 28 * 1)),0,1) / 255.0
+    X_train = np.swapaxes(X_train.reshape((6000 * 10, 28 * 28 * 1)), 0, 1) / 255.0
     Y_test =  extract_labels("notMNIST-to-MNIST/data/t10k-labels-idx1-ubyte", 1000 * 10)
-    Y_train =  extract_labels("notMNIST-to-MNIST/data/train-labels-idx1-ubyte", 1000 * 10)
+    Y_train =  extract_labels("notMNIST-to-MNIST/data/train-labels-idx1-ubyte", 6000 * 10)
     return (X_train, Y_train), (X_test, Y_test)
     
 ###########################################################################################
@@ -223,22 +222,16 @@ def visualizeW1(opt_W1, vis_patch_side, hid_patch_side):
     """ Define useful values """
     
     index  = 0
-    limit0 = 0
-    limit1 = limit0 + vis_patch_side * vis_patch_side
-    limit2 = limit1 + vis_patch_side * vis_patch_side
-    limit3 = limit2 + vis_patch_side * vis_patch_side
-                                              
+    limit = vis_patch_side * vis_patch_side
     for axis in axes.flat:
     
         """ Initialize image as array of zeros """
     
-        img = numpy.zeros((vis_patch_side, vis_patch_side, 3))
+        img = numpy.zeros((vis_patch_side, vis_patch_side))
         
         """ Divide the rows of parameter values into image channels """
         
-        img[:, :, 0] = opt_W1[index, limit0 : limit1].reshape(vis_patch_side, vis_patch_side)
-        img[:, :, 1] = opt_W1[index, limit1 : limit2].reshape(vis_patch_side, vis_patch_side)
-        img[:, :, 2] = opt_W1[index, limit2 : limit3].reshape(vis_patch_side, vis_patch_side)
+        img[:, :] = opt_W1[index, 0 : limit].reshape(vis_patch_side, vis_patch_side)
         
         """ Plot the image on the figure """
         
@@ -249,8 +242,43 @@ def visualizeW1(opt_W1, vis_patch_side, hid_patch_side):
         
     """ Show the obtained plot """  
         
-    matplotlib.pyplot.show()
-    savefig('weights1.png')
+    matplotlib.pyplot.savefig('weights1.png')
+
+###########################################################################################
+""" Visualizes the obtained optimal W1 values as images """
+
+def visualizeW2(opt_W2, vis_patch_side, hid_patch_side):
+
+    """ Add the weights as a matrix of images """
+    
+    figure, axes = matplotlib.pyplot.subplots(nrows = hid_patch_side,
+                                              ncols = hid_patch_side)
+    
+    """ Define useful values """
+    
+    index  = 0
+    limit =  vis_patch_side * vis_patch_side
+                                              
+    for axis in axes.flat:
+    
+        """ Initialize image as array of zeros """
+    
+        img = numpy.zeros((vis_patch_side, vis_patch_side))
+        
+        """ Divide the rows of parameter values into image channels """
+        
+        img[:, :] = opt_W2[index, 0 : limit].reshape(vis_patch_side, vis_patch_side)
+        
+        """ Plot the image on the figure """
+        
+        image = axis.imshow(img, interpolation = 'nearest')
+        axis.set_frame_on(False)
+        axis.set_axis_off()
+        index += 1
+        
+    """ Show the obtained plot """  
+        
+    matplotlib.pyplot.savefig('weights2.png')
 
 ###########################################################################################
 """ Loads data, trains the Autoencoder and visualizes the learned weights """
@@ -266,8 +294,7 @@ def executeSparseAutoencoderLinear():
     rho             = 0.035  # desired average activation of hidden units
     lamda           = 0.003  # weight decay parameter
     beta            = 5      # weight of sparsity penalty term
-    max_iterations  = 10    # number of optimization iterations
-    epsilon         = 0.1    # regularization constant for ZCA Whitening
+    max_iterations  = 050    # number of optimization iterations
     
     visible_size = vis_patch_side * vis_patch_side * image_channels # number of input units
     hidden_size  = hid_patch_side * hid_patch_side                  # number of hidden units
@@ -284,13 +311,16 @@ def executeSparseAutoencoderLinear():
     
     opt_solution  = scipy.optimize.minimize(encoder.sparseAutoencoderLinearCost, encoder.theta, 
                                             args = (xtr,), method = 'L-BFGS-B', 
-                                            jac = True, options = {'maxiter': max_iterations})
+                                            jac = True, options = {'maxiter': max_iterations, 'disp': True})
     opt_theta     = opt_solution.x
     opt_W1        = opt_theta[encoder.limit0 : encoder.limit1].reshape(hidden_size, visible_size)
-    print opt_theta
+    opt_W2        = opt_theta[encoder.limit1 : encoder.limit2].reshape(visible_size, hidden_size)
     
-    """ Visualize the obtained optimal W1 weights """
-    
-    #visualizeW1(numpy.dot(opt_W1, zca_white), vis_patch_side, hid_patch_side)
+    """ Visualize the obtained optimal weights """
+    visualizeW1(opt_W1, vis_patch_side, hid_patch_side)
+    visualizeW2(opt_W2, hid_patch_side, vis_patch_side)
+    clf = encoder.trainMLP(opt_theta, xtr, ytr, xte, yte)
+    joblib.dump(clf, 'MLP.pkl') 
 
-executeSparseAutoencoderLinear()
+if __name__ == "__main__":
+    executeSparseAutoencoderLinear()
