@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('model', help='model file to load')
     parser.add_argument('dset', choices=['mnist'])
+    parser.add_argument('--zdim', default=2 ,help='dimension of hidden latent variable')
     args = parser.parse_args()
 
     with open(args.model, 'rb') as f:
@@ -20,13 +21,12 @@ def main():
     if args.dset == 'mnist':
         S = (28, 28)
         M = 20
-
+    
     manifold = np.zeros((S[0]*M, S[1]*M), dtype=theano.config.floatX)
 
     for z1 in xrange(M):
         for z2 in xrange(M):
-            print z1, z2
-            z = np.zeros((1, 2))
+            z = np.zeros((1, int(args.zdim)))
             # pass unit square through inverse Gaussian CDF
             z[0, 0] = norm.ppf(z1 * 1.0/M + 1.0/(M * 2))
             z[0, 1] = norm.ppf(z2 * 1.0/M + 1.0/(M * 2))

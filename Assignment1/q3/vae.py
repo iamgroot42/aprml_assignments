@@ -73,7 +73,7 @@ def main():
     parser.add_argument('--hdim', default=500, type=int, help='dimension of hidden layer')
     parser.add_argument('--zdim', default=2, type=int, help='dimension of continuous latent variable')
     parser.add_argument('--lmbda', default=0.001, type=float, help='weight decay coefficient')
-    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
+    parser.add_argument('--lr', default=0.000005, type=float, help='learning rate')
     parser.add_argument('--epochs', default=1000, type=int, help='number of passes over dataset')
     parser.add_argument('--print_every', default=100, type=int, help='how often to print cost')
     parser.add_argument('--save_every', default=1, type=int, help='how often to save model (in terms of epochs)')

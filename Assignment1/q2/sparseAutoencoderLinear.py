@@ -121,7 +121,7 @@ class SparseAutoencoderLinear(object):
                                                     (1 - self.rho) * numpy.log((1 - self.rho) / (1 - rho_cap)))
 
 	def L1_grad(X):
-		return 1
+		return np.sign(X)
 
 	def L2_grad(X):
 		return 2 *X
@@ -137,7 +137,7 @@ class SparseAutoencoderLinear(object):
 	L2_error             = numpy.linalg.norm(W1, 2) + numpy.linalg.norm(W2, 2)
 	Lelastic_error       = 0.5 * L1_error + 0.5 * L2_error
 	Ltrace_error         = numpy.sum(numpy.linalg.svd(W1)[1]) + numpy.sum(numpy.linalg.svd(W2)[1])
-        cost                 = sum_of_squares_error + weight_decay + KL_divergence + Ltrace_error
+        cost                 = sum_of_squares_error + weight_decay + KL_divergence + L1_error
         
         KL_div_grad = self.beta * (-(self.rho / rho_cap) + ((1 - self.rho) / (1 - rho_cap)))
         
@@ -160,8 +160,8 @@ class SparseAutoencoderLinear(object):
         
         """ Transform numpy matrices into arrays """
         
-        W1_grad = numpy.array(W1_grad) + Ltrace_grad(W1)
-        W2_grad = numpy.array(W2_grad) + Ltrace_grad(W2)
+        W1_grad = numpy.array(W1_grad) + L1_grad(W1)
+        W2_grad = numpy.array(W2_grad) + L1_grad(W2)
         b1_grad = numpy.array(b1_grad)
         b2_grad = numpy.array(b2_grad)
         

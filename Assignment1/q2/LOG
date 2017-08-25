@@ -1,0 +1,5 @@
+No regulariation : 87.4
+L1 regularization : 83.17
+L2 regularization : 84.13
+Lelastic regularization : 78.8
+Ltrace regularization : 46.47
