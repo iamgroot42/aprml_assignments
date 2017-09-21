@@ -6,28 +6,25 @@ import numpy as np
 
 class Dropout(Layer):
 
-	def __init__(self, output_dim, **kwargs):
-		self.output_dim = output_dim
+	def __init__(self, probability, **kwargs):
+		self.probability = probability
+		assert(probability>=0 and probability<=1)
 		super(Dropout, self).__init__(**kwargs)
 
 	def build(self, input_shape):
-		self.kernel = self.add_weight(name='kernel', 
-									  shape=(input_shape[1], self.output_dim),
-									  initializer='uniform',
-									  trainable=True)
 		super(Dropout, self).build(input_shape)
 
 	def call(self, x):
-		return K.dot(x, self.kernel)
+		return K.in_train_phase(K.dropout(x, self.probability),x)
 
 	def compute_output_shape(self, input_shape):
-		return (input_shape[0], self.output_dim)
+		return input_shape
 
 
 class BatchNorm(Layer):
 
-	def __init__(self, output_dim, **kwargs):
-		self.epsilon = 0.0001
+	def __init__(self, **kwargs):
+		self.epsilon = K.epsilon()
 		super(BatchNorm, self).__init__(**kwargs)
 
 	def build(self, input_shape):
@@ -36,7 +33,7 @@ class BatchNorm(Layer):
 	def call(self, x):
 		mean = K.mean(x, axis=0)
 		variance = K.var(x, axis=0)
-		return (x - mean) / K.sqrt(variance + self.epsilon)
+		return K.in_train_phase((x - mean) / K.sqrt(variance + self.epsilon),x)
 
 	def compute_output_shape(self, input_shape):
 		return input_shape
